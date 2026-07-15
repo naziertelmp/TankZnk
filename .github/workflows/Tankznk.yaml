@@ -1,85 +1,37 @@
-name: Linux Remote Desktop
+name: TankZnk
 
 on:
   workflow_dispatch:
 
 jobs:
-  linux-rdp:
+  terminal:
     runs-on: ubuntu-latest
     timeout-minutes: 360
-    
     steps:
-      - name: System Update
+      - name: Setup
         run: |
           sudo apt-get update
-          sudo apt-get upgrade -y
-          
-      - name: Install Desktop Environment and VNC
-        run: |
-          sudo apt-get install -y xfce4 xfce4-goodies tigervnc-standalone-server tigervnc-common curl wget git
-          
-      - name: Create User and Set Password
-        run: |
-          sudo useradd -m -s /bin/bash toolboxlap
-          echo "toolboxlap:admin@123" | sudo chpasswd
-          sudo usermod -aG sudo toolboxlap
-          
-      - name: Configure VNC Server
-        run: |
-          sudo -u toolboxlap mkdir -p /home/toolboxlap/.vnc
-          echo "admin@123" | sudo -u toolboxlap vncpasswd -f > /home/toolboxlap/.vnc/passwd
-          sudo -u toolboxlap chmod 600 /home/toolboxlap/.vnc/passwd
-          
-          cat > /tmp/xstartup << 'XEOF'
-#!/bin/bash
-startxfce4 &
-XEOF
-          
-          sudo cp /tmp/xstartup /home/toolboxlap/.vnc/xstartup
-          sudo chown toolboxlap:toolboxlap /home/toolboxlap/.vnc/xstartup
-          sudo chmod +x /home/toolboxlap/.vnc/xstartup
-          
-          sudo -u toolboxlap vncserver :1 -depth 24 -geometry 1280x800 -localhost no &
-          sleep 3
-          
+          sudo apt-get install -y curl wget git
+          sudo useradd -m -s /bin/bash coreterm
+          echo "coreterm:admin@123" | sudo chpasswd
+          sudo usermod -aG sudo coreterm
       - name: Install Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
           sudo tailscaled --state=/var/lib/tailscale/tailscaled.state &
           sleep 3
-          
-      - name: Connect Tailscale
+      - name: Connect
         run: |
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-linux-$GITHUB_RUN_ID
-          
-          for i in $(seq 1 10); do
-            TS_IP=$(tailscale ip -4 2>/dev/null)
-            if [ -n "$TS_IP" ]; then
-              echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
-              echo "Tailscale IP: $TS_IP"
-              break
-            fi
-            sleep 5
-          done
-          
-      - name: Install NoVNC
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-terminal-$GITHUB_RUN_ID
+          sleep 5
+          echo "IP=$(tailscale ip -4)" >> $GITHUB_ENV
+      - name: Show Info
         run: |
-          sudo apt-get install -y novnc websockify
-          websockify --web=/usr/share/novnc 8080 localhost:5901 &
-          sleep 3
-          
-      - name: Display Connection Info
-        run: |
-          echo "========================================="
-          echo "VNC Address: ${{ env.TAILSCALE_IP }}:5901"
-          echo "SSH: ssh toolboxlap@${{ env.TAILSCALE_IP }}"
-          echo "NoVNC: http://${{ env.TAILSCALE_IP }}:8080/vnc.html"
+          echo "ssh coreterm@${{ env.IP }}"
           echo "Password: admin@123"
-          echo "========================================="
-          
       - name: Keep Alive
         run: |
           while true; do
-            echo "[$(date)] Running..."
             sleep 300
+            echo "Running..."
           done
