@@ -1,0 +1,138 @@
+name: TZ
+
+on:
+  workflow_dispatch:
+
+jobs:
+  linux-rdp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    
+    steps:
+      - name: System Update
+        run: |
+          sudo apt-get update
+          sudo apt-get upgrade -y
+          
+      - name: Install Desktop Environment and VNC
+        run: |
+          sudo apt-get install -y \
+            xfce4 \
+            xfce4-goodies \
+            tigervnc-standalone-server \
+            tigervnc-common \
+            curl \
+            wget \
+            git
+          
+      - name: Create User and Set Password
+        run: |
+          PASSWORD="admin@123"
+          USERNAME="toolboxlap"
+          
+          # Create user
+          sudo useradd -m -s /bin/bash $USERNAME
+          echo "$USERNAME:$PASSWORD" | sudo chpasswd
+          sudo usermod -aG sudo $USERNAME
+          
+          echo "USERNAME=$USERNAME" >> $GITHUB_ENV
+          echo "PASSWORD=$PASSWORD" >> $GITHUB_ENV
+          
+          echo "========================================="
+          echo "User created: $USERNAME"
+          echo "Password: $PASSWORD"
+          echo "========================================="
+          
+      - name: Configure VNC Server
+        run: |
+          USERNAME=${{ env.USERNAME }}
+          PASSWORD=${{ env.PASSWORD }}
+          
+          # Create VNC password
+          sudo -u $USERNAME bash -c "mkdir -p ~/.vnc"
+          echo "$PASSWORD" | sudo -u $USERNAME vncpasswd -f > /home/$USERNAME/.vnc/passwd
+          sudo -u $USERNAME chmod 600 /home/$USERNAME/.vnc/passwd
+          
+          # Create xstartup file
+          sudo -u $USERNAME bash -c "cat > ~/.vnc/xstartup << 'EOF'
+#!/bin/bash
+xrdb \$HOME/.Xresources
+startxfce4 &
+EOF"
+          
+          sudo -u $USERNAME chmod +x /home/$USERNAME/.vnc/xstartup
+          
+          # Start VNC server
+          sudo -u $USERNAME vncserver :1 -depth 24 -geometry 1280x800 -localhost no &
+          sleep 3
+          
+          echo "VNC server started on display :1"
+          
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscaled --state=/var/lib/tailscale/tailscaled.state &
+          sleep 3
+          
+      - name: Connect Tailscale
+        run: |
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-linux-$GITHUB_RUN_ID
+          
+          # Get Tailscale IP
+          for i in {1..10}; do
+            TS_IP=$(tailscale ip -4 2>/dev/null)
+            if [ ! -z "$TS_IP" ]; then
+              echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
+              echo "Tailscale IP: $TS_IP"
+              break
+            fi
+            sleep 5
+          done
+          
+          if [ -z "$TS_IP" ]; then
+            echo "Failed to get Tailscale IP"
+            exit 1
+          fi
+          
+      - name: Install NoVNC (Web-based VNC)
+        run: |
+          sudo apt-get install -y novnc websockify python3-novnc
+          
+          # Start NoVNC to make VNC accessible via browser
+          websockify --web=/usr/share/novnc 8080 localhost:5901 &
+          sleep 3
+          
+          echo "NoVNC web client started on port 8080"
+          
+      - name: Display Connection Info
+        run: |
+          echo "╔══════════════════════════════════════════════════════════╗"
+          echo "║           LINUX REMOTE DESKTOP - READY!                 ║"
+          echo "╠══════════════════════════════════════════════════════════╣"
+          echo "║                                                        ║"
+          echo "║  Method 1: VNC Client                                  ║"
+          echo "║  ─────────────────────────────────────                 ║"
+          echo "║  VNC Address: ${{ env.TAILSCALE_IP }}:5901             ║"
+          echo "║  VNC Password: ${{ env.PASSWORD }}                     ║"
+          echo "║                                                        ║"
+          echo "║  Method 2: SSH Access                                  ║"
+          echo "║  ─────────────────────────────────────                 ║"
+          echo "║  ssh ${{ env.USERNAME }}@${{ env.TAILSCALE_IP }}      ║"
+          echo "║  Password: ${{ env.PASSWORD }}                         ║"
+          echo "║                                                        ║"
+          echo "║  Method 3: NoVNC (Browser)                             ║"
+          echo "║  ─────────────────────────────────────                 ║"
+          echo "║  http://${{ env.TAILSCALE_IP }}:8080/vnc.html         ║"
+          echo "║                                                        ║"
+          echo "║  Username: ${{ env.USERNAME }}                         ║"
+          echo "║  Password: ${{ env.PASSWORD }}                         ║"
+          echo "║                                                        ║"
+          echo "╚══════════════════════════════════════════════════════════╝"
+          
+      - name: Keep Alive
+        run: |
+          echo "Session active. Will run for 6 hours maximum."
+          while true; do
+            echo "[$(date)] Remote desktop active"
+            sleep 300
+          done
