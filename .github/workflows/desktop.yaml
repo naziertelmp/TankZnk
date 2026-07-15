@@ -20,9 +20,10 @@ jobs:
       - name: VNC Setup
         run: |
           sudo -u user mkdir -p /home/user/.vnc
-          echo "admin@123" | sudo -u user vncpasswd -f > /home/user/.vnc/passwd
-          sudo -u user chmod 600 /home/user/.vnc/passwd
-          printf '#!/bin/bash\nstartxfce4 &\n' | sudo tee /home/user/.vnc/xstartup
+          echo "admin@123" | vncpasswd -f | sudo tee /home/user/.vnc/passwd > /dev/null
+          sudo chown user:user /home/user/.vnc/passwd
+          sudo chmod 600 /home/user/.vnc/passwd
+          printf '#!/bin/bash\nstartxfce4 &\n' | sudo tee /home/user/.vnc/xstartup > /dev/null
           sudo chown user:user /home/user/.vnc/xstartup
           sudo chmod +x /home/user/.vnc/xstartup
           sudo -u user vncserver :1 -depth 24 -geometry 1280x800 -localhost no &
