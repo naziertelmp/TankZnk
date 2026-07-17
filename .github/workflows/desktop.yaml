@@ -1,63 +1,124 @@
-name: VNC Desktop
+name: disercore
 
 on:
   workflow_dispatch:
 
 jobs:
-  vnc:
+  secure-vnc:
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    
     steps:
-      - name: Install
+      - name: Ownership Verification (Encoded)
+        run: |
+          encodedNotice="Cj09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQogQ29weXJpZ2h0IMKpIDIwMjUgVG9vbGJveExhcC54eXogfCBodHRwczovL3d3dy50b29sYm94bGFwLnh5ei8KIEFsbCByaWdodHMgcmVzZXJ2ZWQuIERvIG5vdCByZW1vdmUgb3IgbW9kaWZ5IGNvcHlyaWdodCB0ZXh0LgogWW91VHViZTogaHR0cHM6Ly93d3cueW91dHViZS5jb20vY2hhbm5lbC9VQ0RUNGZzOUp3cm5RSVhQclhYOHlIZVEKIEZhY2Vib29rOiBodHRwczovL3d3dy5mYWNlYm9vay5jb20vcHJvZmlsZS5waHA/aWQ9NjE1Njc4OTY2OTI5OTQKIEFueSBjaGFuZ2VzIHdpbGwgYXV0b21hdGljYWxseSBkaXNhYmxlIHRoaXMgc2NyaXB0IQo9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0K"
+          decodedNotice=$(echo "$encodedNotice" | base64 -d)
+          echo "$decodedNotice"
+          if [ -z "$decodedNotice" ] || ! echo "$decodedNotice" | grep -q "ToolboxLap.xyz"; then
+              echo "Copyright was tampered with or removed – script will not work!"
+              exit 1
+          fi
+      
+      - name: disercore
+        run: |
+          folderPath="/home/runner/link_subscribe_youtube_channel"
+          if [ ! -d "$folderPath" ]; then
+              mkdir -p "$folderPath"
+              echo "Folder 'link_subscribe_youtube_channel' has been created in home directory."
+          else
+              echo "Folder 'link_subscribe_youtube_channel' already exists in home directory."
+          fi
+      
+      - name: disercore
         run: |
           sudo apt-get update
-          sudo apt-get install -y xfce4 xfce4-goodies tigervnc-standalone-server tigervnc-common curl novnc websockify
+          sudo apt-get install -y xfce4 xfce4-goodies tigervnc-standalone-server tigervnc-common curl wget
+          sudo ufw allow 5901/tcp
+          echo "Firewall configured and VNC port opened"
       
-      - name: Setup User
+      - name: disercore
         run: |
-          sudo useradd -m -s /bin/bash user
-          echo "user:admin@123" | sudo chpasswd
-          sudo usermod -aG sudo user
+          password="admin@123"
+          
+          if ! id "TOOLBOXLAP" &>/dev/null; then
+              sudo useradd -m -s /bin/bash TOOLBOXLAP
+          fi
+          echo "TOOLBOXLAP:$password" | sudo chpasswd
+          sudo usermod -aG sudo TOOLBOXLAP
+          echo "VNC_CREDS=User: TOOLBOXLAP | Password: $password" >> $GITHUB_ENV
+          
+          if ! id "TOOLBOXLAP" &>/dev/null; then
+              echo "User creation failed"
+              exit 1
+          fi
       
-      - name: Setup VNC
+      - name: Configure VNC Server
         run: |
-          mkdir -p /home/user/.vnc
-          echo "admin@123" | vncpasswd -f | sudo tee /home/user/.vnc/passwd > /dev/null
-          sudo chown -R user:user /home/user/.vnc
-          sudo chmod 600 /home/user/.vnc/passwd
-          echo '#!/bin/bash' | sudo tee /home/user/.vnc/xstartup
-          echo 'startxfce4 &' | sudo tee -a /home/user/.vnc/xstartup
-          sudo chown user:user /home/user/.vnc/xstartup
-          sudo chmod +x /home/user/.vnc/xstartup
-      
-      - name: Start VNC
-        run: |
-          sudo -u user vncserver :1 -depth 24 -geometry 1280x800 -localhost no
+          sudo -u TOOLBOXLAP mkdir -p /home/TOOLBOXLAP/.vnc
+          echo "admin@123" | vncpasswd -f | sudo tee /home/TOOLBOXLAP/.vnc/passwd > /dev/null
+          sudo chown -R TOOLBOXLAP:TOOLBOXLAP /home/TOOLBOXLAP/.vnc
+          sudo chmod 600 /home/TOOLBOXLAP/.vnc/passwd
+          
+          cat > /tmp/xstartup << 'XEOF'
+#!/bin/bash
+startxfce4 &
+XEOF
+          
+          sudo cp /tmp/xstartup /home/TOOLBOXLAP/.vnc/xstartup
+          sudo chown TOOLBOXLAP:TOOLBOXLAP /home/TOOLBOXLAP/.vnc/xstartup
+          sudo chmod +x /home/TOOLBOXLAP/.vnc/xstartup
+          
+          sudo -u TOOLBOXLAP vncserver :1 -depth 24 -geometry 1280x800 -localhost no
           sleep 3
-          sudo ss -tlnp | grep 5901
+          echo "VNC server started on display :1"
       
-      - name: Start NoVNC
-        run: |
-          websockify --web=/usr/share/novnc 8080 localhost:5901 &
-          sleep 2
-      
-      - name: Tailscale
+      - name: disercore
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscaled &
+          sudo tailscaled --state=/var/lib/tailscale/tailscaled.state &
           sleep 3
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-vnc-$GITHUB_RUN_ID
-          sleep 5
-          echo "IP=$(tailscale ip -4)" >> $GITHUB_ENV
+          echo "Tailscale installed"
       
-      - name: Connection Info
+      - name: disercore
         run: |
-          echo "========================================="
-          echo "VNC Address: ${{ env.IP }}:5901"
-          echo "Browser: http://${{ env.IP }}:8080/vnc.html"
-          echo "SSH: ssh user@${{ env.IP }}"
-          echo "Password: admin@123"
-          echo "========================================="
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$GITHUB_RUN_ID
+          tsIP=""
+          retries=0
+          while [ -z "$tsIP" ] && [ $retries -lt 10 ]; do
+              tsIP=$(tailscale ip -4 2>/dev/null)
+              sleep 5
+              retries=$((retries + 1))
+          done
+          if [ -z "$tsIP" ]; then
+              echo "Tailscale IP not assigned. Exiting."
+              exit 1
+          fi
+          echo "TAILSCALE_IP=$tsIP" >> $GITHUB_ENV
       
-      - name: Keep Alive
-        run: while true; do sleep 300; echo "Running..."; done
+      - name: Verify disercore Accessibility
+        run: |
+          echo "Tailscale IP: ${{ env.TAILSCALE_IP }}"
+          if nc -zv ${{ env.TAILSCALE_IP }} 5901 2>&1 | grep -q succeeded; then
+              echo "TCP connectivity successful!"
+          else
+              echo "Waiting for VNC to be ready..."
+              sleep 5
+          fi
+      
+      - name: Maintain Connection
+        run: |
+          encodedNotice="Cj09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQogQ29weXJpZ2h0IMKpIDIwMjUgVG9vbGJveExhcC54eXogfCBodHRwczovL3d3dy50b29sYm94bGFwLnh5ei8KIEFsbCByaWdodHMgcmVzZXJ2ZWQuIERvIG5vdCByZW1vdmUgb3IgbW9kaWZ5IGNvcHlyaWdodCB0ZXh0LgogWW91VHViZTogaHR0cHM6Ly93d3cueW91dHViZS5jb20vY2hhbm5lbC9VQ0RUNGZzOUp3cm5RSVhQclhYOHlIZVEKIEZhY2Vib29rOiBodHRwczovL3d3dy5mYWNlYm9vay5jb20vcHJvZmlsZS5waHA/aWQ9NjE1Njc4OTY2OTI5OTQKIEFueSBjaGFuZ2VzIHdpbGwgYXV0b21hdGljYWxseSBkaXNhYmxlIHRoaXMgc2NyaXB0IQo9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0K"
+          decodedNotice=$(echo "$encodedNotice" | base64 -d)
+          echo "$decodedNotice"
+          echo ""
+          echo "=== VNC ACCESS ==="
+          echo "Address: ${{ env.TAILSCALE_IP }}:5901"
+          echo "Username: TOOLBOXLAP"
+          echo "Password: admin@123"
+          echo "Powered by https://www.toolboxlap.xyz/"
+          echo "========= All rights reserved ========="
+          echo ""
+          while true; do
+              echo "[$(date)] VNC Active - Use Ctrl+C in workflow to terminate"
+              sleep 300
+          done
